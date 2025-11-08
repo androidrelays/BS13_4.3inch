@@ -129,6 +129,7 @@ static void disconnect_bluetooth_cb(lv_event_t *e);
 static void create_ui();
 static void create_top_bar();
 static void update_top_bar_bt_status();
+static void apply_rotation_settings();
 
 // BLE Server callbacks
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -492,25 +493,15 @@ void setup() {
 
   set_leds();
 
-  currentRotation = 0;
-  
-  // GFX driver in default orientation (rotation 0)
-  gfx->setRotation(0);
-  
+  currentRotation = 90;
+
   disp = lv_disp_get_default();
   // Keep LVGL in default orientation
   lv_disp_set_rotation(disp, LV_DISP_ROT_NONE);
 
   create_ui();
-  create_top_bar();
+  apply_rotation_settings();
   update_lock_icon();
-  
-  // Default portrait layout positioning
-  lv_obj_align(tight_container, LV_ALIGN_BOTTOM_MID, 0, 15);
-  lv_obj_align(switch_container, LV_ALIGN_TOP_MID, 0, 115);
-  if (lock_icon_btn) {
-    lv_obj_align(lock_icon_btn, LV_ALIGN_TOP_MID, 0, 58);
-  }
 }
 
 void loop() {
@@ -787,158 +778,161 @@ static void rotate_screen_cb(lv_event_t *e) {
   currentRotation = (currentRotation + 90) % 360;
   Serial.print(" -> New rotation: ");
   Serial.println(currentRotation);
-  lv_disp_t *disp = lv_disp_get_default();
+  apply_rotation_settings();
+}
+
+static void apply_rotation_settings() {
+  lv_disp_t *disp_inst = lv_disp_get_default();
+  if (!disp_inst) {
+    return;
+  }
 
   switch (currentRotation) {
-    case 0:   
+    case 0:
       gfx->setRotation(0);
-      // Update LVGL display driver resolution for portrait
       disp_drv.hor_res = LCD_HOR_RES;  // 320
       disp_drv.ver_res = LCD_VER_RES;  // 480
       break;
-    case 90:  
+    case 90:
       gfx->setRotation(1);
-      // Update LVGL display driver resolution for landscape
       disp_drv.hor_res = LCD_VER_RES;  // 480
       disp_drv.ver_res = LCD_HOR_RES;  // 320
       break;
-    case 180: 
+    case 180:
       gfx->setRotation(2);
-      // Update LVGL display driver resolution for portrait
       disp_drv.hor_res = LCD_HOR_RES;  // 320
       disp_drv.ver_res = LCD_VER_RES;  // 480
       break;
-    case 270: 
+    case 270:
       gfx->setRotation(3);
-      // Update LVGL display driver resolution for landscape
       disp_drv.hor_res = LCD_VER_RES;  // 480
       disp_drv.ver_res = LCD_HOR_RES;  // 320
       break;
   }
-  
-  // Notify LVGL of the resolution change
-  lv_disp_drv_update(disp, &disp_drv);
-  
-  // Reposition UI elements based on orientation
+
+  lv_disp_drv_update(disp_inst, &disp_drv);
+
   if (currentRotation == 90 || currentRotation == 270) {
-    // Landscape orientations - center switch on left, center controls on right, moved down
-    lv_obj_set_size(switch_container, 200, 220); // Made 15px taller in landscape: changed from 205 to 220
-    lv_obj_align(switch_container, LV_ALIGN_LEFT_MID, 20, 27); // Moved down 7px more: changed from (20, 20) to (20, 27)
-    
-    // Make switch components 15% larger in landscape orientation
+    if (switch_container) {
+      lv_obj_set_size(switch_container, 200, 220);
+      lv_obj_align(switch_container, LV_ALIGN_LEFT_MID, 20, 27);
+    }
+
     if (vertical_switch_container) {
-      lv_obj_set_size(vertical_switch_container, 69, 115); // 15% larger: 60x100 -> 69x115
-      lv_obj_set_style_radius(vertical_switch_container, 35, 0); // Adjusted radius: 30 -> 35
-      lv_obj_set_pos(vertical_switch_container, 56, 0); // Moved left 2px and down 2px in landscape: changed from (58, -2) to (56, 0)
+      lv_obj_set_size(vertical_switch_container, 69, 115);
+      lv_obj_set_style_radius(vertical_switch_container, 35, 0);
+      lv_obj_set_pos(vertical_switch_container, 56, 0);
     }
-    
-    // Make middle container larger in landscape to accommodate larger white switch
-    lv_obj_t *middle_container = lv_obj_get_child(switch_container, 1); // Get middle container (second child after UP label)
-    if (middle_container) {
-      lv_obj_set_size(middle_container, 170, 120); // Increased height from 100 to 120 to fit larger switch
-    }
-    if (switch_69) {
-      lv_obj_set_size(switch_69, 58, 58); // 15% larger: 50x50 -> 58x58
-      lv_obj_set_style_radius(switch_69, 29, 0); // Adjusted radius: 25 -> 29
-      // Adjust position to account for size change while maintaining relative positioning
-      if (switchToggled) {
-        lv_obj_set_pos(switch_69, -2, -2); // Moved down 1px more in landscape: Y changed from -3 to -2
-      } else {
-        lv_obj_set_pos(switch_69, -2, 42); // Moved down 1px more in landscape: Y changed from 41 to 42
+
+    if (switch_container) {
+      lv_obj_t *middle_container = lv_obj_get_child(switch_container, 1);
+      if (middle_container) {
+        lv_obj_set_size(middle_container, 170, 120);
       }
     }
-    
-    lv_obj_align(tight_container, LV_ALIGN_RIGHT_MID, -20, 60); // Moved down 5px more: changed from (55) to (60)
-    if (lock_icon_btn) {
-      lv_obj_set_size(lock_icon_btn, 180, 60); // Smaller for landscape
-      lv_obj_align(lock_icon_btn, LV_ALIGN_RIGHT_MID, -35, -50); // Moved left 10px more: changed from (-25, -50) to (-35, -50)
+
+    if (switch_69) {
+      lv_obj_set_size(switch_69, 58, 58);
+      lv_obj_set_style_radius(switch_69, 29, 0);
+      if (switchToggled) {
+        lv_obj_set_pos(switch_69, -2, -2);
+      } else {
+        lv_obj_set_pos(switch_69, -2, 42);
+      }
     }
-    
-    // Make open and close buttons taller in landscape orientation
+
+    if (tight_container) {
+      lv_obj_align(tight_container, LV_ALIGN_RIGHT_MID, -20, 60);
+    }
+
+    if (lock_icon_btn) {
+      lv_obj_set_size(lock_icon_btn, 180, 60);
+      lv_obj_align(lock_icon_btn, LV_ALIGN_RIGHT_MID, -35, -50);
+    }
+
     if (btn_open) {
-      lv_obj_set_size(btn_open, 200, 67); // 7px taller: 60 -> 67
+      lv_obj_set_size(btn_open, 200, 67);
     }
     if (btn_close) {
-      lv_obj_set_size(btn_close, 200, 67); // 7px taller: 60 -> 67
+      lv_obj_set_size(btn_close, 200, 67);
     }
-    
-    // Update button overlays to match new button sizes in landscape
+
     if (open_btn_overlay) {
-      lv_obj_set_size(open_btn_overlay, 200, 67); // Match button size: 67px tall
+      lv_obj_set_size(open_btn_overlay, 200, 67);
     }
     if (close_btn_overlay) {
-      lv_obj_set_size(close_btn_overlay, 200, 67); // Match button size: 67px tall
+      lv_obj_set_size(close_btn_overlay, 200, 67);
     }
   } else {
-    // Portrait orientations - vertical layout with adjusted positioning
-    lv_obj_set_size(switch_container, 215, 185); // 15px wider in portrait: changed from 200 to 215
-    
-    // Restore original switch component sizes in portrait orientation
+    if (switch_container) {
+      lv_obj_set_size(switch_container, 215, 185);
+    }
+
     if (vertical_switch_container) {
-      lv_obj_set_size(vertical_switch_container, 60, 100); // Original size
-      lv_obj_set_style_radius(vertical_switch_container, 30, 0); // Original radius
-      lv_obj_set_pos(vertical_switch_container, 58, 0); // Restore original position in portrait
+      lv_obj_set_size(vertical_switch_container, 60, 100);
+      lv_obj_set_style_radius(vertical_switch_container, 30, 0);
+      lv_obj_set_pos(vertical_switch_container, 58, 0);
     }
-    
-    // Restore middle container size in portrait orientation
-    lv_obj_t *middle_container = lv_obj_get_child(switch_container, 1); // Get middle container (second child after UP label)
-    if (middle_container) {
-      lv_obj_set_size(middle_container, 170, 100); // Restore original size: 170x100
-    }
-    
-    if (switch_69) {
-      lv_obj_set_size(switch_69, 50, 50); // Original size
-      lv_obj_set_style_radius(switch_69, 25, 0); // Original radius
-      // Restore positions moved down 1px
-      if (switchToggled) {
-        lv_obj_set_pos(switch_69, -2, -2); // Moved down 1px: Y changed from -3 to -2
-      } else {
-        lv_obj_set_pos(switch_69, -2, 38); // Moved down 1px: Y changed from 37 to 38
+
+    if (switch_container) {
+      lv_obj_t *middle_container = lv_obj_get_child(switch_container, 1);
+      if (middle_container) {
+        lv_obj_set_size(middle_container, 170, 100);
       }
     }
-    
-    lv_obj_align(tight_container, LV_ALIGN_BOTTOM_MID, 0, 15); // Moved down 15px: changed from 0 to 15
-    lv_obj_align(switch_container, LV_ALIGN_TOP_MID, 0, 115); // Moved up 20px in portrait: changed from (0, 135) to (0, 115)
-    if (lock_icon_btn) {
-      lv_obj_set_size(lock_icon_btn, 215, 50); // Made shorter in portrait: changed from 70 to 50
-      lv_obj_align(lock_icon_btn, LV_ALIGN_TOP_MID, 0, 58); // Moved down 3px: changed from (0, 55) to (0, 58)
+
+    if (switch_69) {
+      lv_obj_set_size(switch_69, 50, 50);
+      lv_obj_set_style_radius(switch_69, 25, 0);
+      if (switchToggled) {
+        lv_obj_set_pos(switch_69, -2, -2);
+      } else {
+        lv_obj_set_pos(switch_69, -2, 38);
+      }
     }
-    
-    // Make buttons wider and taller in portrait orientation
+
+    if (tight_container) {
+      lv_obj_align(tight_container, LV_ALIGN_BOTTOM_MID, 0, 15);
+    }
+    if (switch_container) {
+      lv_obj_align(switch_container, LV_ALIGN_TOP_MID, 0, 115);
+    }
+    if (lock_icon_btn) {
+      lv_obj_set_size(lock_icon_btn, 215, 50);
+      lv_obj_align(lock_icon_btn, LV_ALIGN_TOP_MID, 0, 58);
+    }
+
     if (btn_open) {
-      lv_obj_set_size(btn_open, 215, 70); // Made taller in portrait: changed from 60 to 70
+      lv_obj_set_size(btn_open, 215, 70);
     }
     if (btn_close) {
-      lv_obj_set_size(btn_close, 215, 70); // Made taller in portrait: changed from 60 to 70
+      lv_obj_set_size(btn_close, 215, 70);
     }
-    
-    // Update overlay sizes to match new button sizes in portrait orientation
+
     if (open_btn_overlay) {
-      lv_obj_set_size(open_btn_overlay, 215, 70); // Match new button size: 215x70
+      lv_obj_set_size(open_btn_overlay, 215, 70);
     }
     if (close_btn_overlay) {
-      lv_obj_set_size(close_btn_overlay, 215, 70); // Match new button size: 215x70
+      lv_obj_set_size(close_btn_overlay, 215, 70);
     }
   }
-  
-  // Recreate top bar after rotation to ensure correct positioning
+
   create_top_bar();
-  // Update Bluetooth status font size based on new orientation
   update_top_bar_bt_status();
 
-  // Ensure screen and main container remain non-scrollable after rotation
   lv_obj_t *rot_scr = lv_scr_act();
-  lv_obj_clear_flag(rot_scr, LV_OBJ_FLAG_SCROLLABLE);
-  lv_obj_set_scroll_dir(rot_scr, LV_DIR_NONE);
-  lv_obj_set_scrollbar_mode(rot_scr, LV_SCROLLBAR_MODE_OFF);
+  if (rot_scr) {
+    lv_obj_clear_flag(rot_scr, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(rot_scr, LV_DIR_NONE);
+    lv_obj_set_scrollbar_mode(rot_scr, LV_SCROLLBAR_MODE_OFF);
+  }
   if (ui_container) {
     lv_obj_clear_flag(ui_container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_scroll_dir(ui_container, LV_DIR_NONE);
     lv_obj_set_scrollbar_mode(ui_container, LV_SCROLLBAR_MODE_OFF);
   }
 
-  // Force a full screen refresh
-  lv_refr_now(disp);
+  lv_refr_now(disp_inst);
   lv_obj_invalidate(lv_scr_act());
 }
 
