@@ -1,6 +1,6 @@
-# BS14 ESP32-S3 PlatformIO Project
+# BS14 ESP32-S3 LCD Project
 
-This is a PlatformIO project for ESP32-S3 that replicates the functionality of the Arduino Giga BS14_final_settings sketch.
+This is an optimized PlatformIO project for ESP32-S3 with 3.5" LCD display that features custom rotation system and touch mapping.
 
 ## Key Changes from Arduino Giga Version
 
