@@ -1,4 +1,4 @@
-//lvgl 8.4 - Adapted for ESP32-S3
+//LVGL 8.4 - ESP32-S3 with Optimized Touch & Custom Rotation System
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
