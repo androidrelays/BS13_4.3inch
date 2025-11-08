@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../Arduino-v3.1.3"
+		}
+	],
+	"settings": {}
+}
