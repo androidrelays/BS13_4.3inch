@@ -1,4 +1,4 @@
-//LVGL 8.4 - ESP32-S3 with Optimized Touch & Custom Rotation System
+//LVGL 8.4 - ESP32-S3 with Optimized Touch & Custom Rotation System - 4.3" Display
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -7,27 +7,26 @@
 #include <Wire.h>
 #include <lvgl.h>
 #include <stdint.h>
-#include "TCA9554.h"
-#include "TouchDrvFT6X36.hpp"
-#include "REG/FT6X36Constants.h"
+#include <esp_heap_caps.h>
+#include "TouchDrvGT911.hpp"
 
-// Display configuration - ESP32-S3 3.5" LCD
-#define GFX_BL 6
-#define SPI_MISO 2
-#define SPI_MOSI 1
-#define SPI_SCLK 5
-#define LCD_CS -1
-#define LCD_DC 3
-#define LCD_RST -1
-#define LCD_HOR_RES 320
+// Display configuration - ESP32-S3 4.3" LCD (RGB Parallel Interface)
+#define GFX_BL 2  // Backlight pin for 4.3" display
+#define LCD_HOR_RES 800
 #define LCD_VER_RES 480
-#define I2C_SDA 8
-#define I2C_SCL 7
 
-// LED pins (active-low RGB) - UPDATED TO AVOID CONFLICTS
-const int redled = 16;   // Changed from 4 to avoid conflicts
-const int greenled = 17; // Changed from 5 (was conflicting with SPI_SCLK)
-const int blueled = 18;  // Changed from 6 (was conflicting with GFX_BL)
+// Touch panel configuration (GT911 for 4.3" display)
+#define TOUCH_SDA 8
+#define TOUCH_SCL 9
+#define TOUCH_IRQ 4
+#define TOUCH_RST -1  // Reset handled internally by GT911
+
+// LED pins (active-low RGB) - UPDATED FOR 4.3" DISPLAY
+// Note: RGB panel uses many pins (R:45,48,47,21,14 G:5,6,7,15,16,4 B:8,3,46,9,1)
+// Using pins that don't conflict with RGB panel or touch (SDA:8, SCL:9, IRQ:4)
+const int redled = 19;   // Changed to avoid RGB panel G4 (pin 16)
+const int greenled = 20; // Changed to avoid conflicts
+const int blueled = 18;  // OK - not used by RGB panel
 
 // Breaker control pins - ADJUST THESE FOR YOUR ESP32-S3 BOARD
 const int sense = 10;   // Sense pin A (default)
@@ -53,12 +52,27 @@ BLECharacteristic *pSenseChar = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
-// Display and touch objects
-TCA9554 TCA(0x20);
-Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, SPI_SCLK, SPI_MOSI, SPI_MISO);
-// Start with rotation 0, LVGL will handle rotation
-Arduino_GFX *gfx = new Arduino_ST7796(bus, LCD_RST, 0, true, LCD_HOR_RES, LCD_VER_RES);
-TouchDrvFT6X36 touch;
+// Display and touch objects - 4.3" RGB Parallel Interface
+Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
+    40,  // DE
+    41,  // VSYNC
+    39,  // HSYNC
+    42,  // PCLK
+    45, 48, 47, 21, 14,        // R0~R4
+    5, 6, 7, 15, 16, 4,        // G0~G5
+    8, 3, 46, 9, 1,            // B0~B4
+    0, 8, 4, 8,                // hsync polarity / porch settings
+    0, 8, 4, 8,                // vsync polarity / porch settings
+    1, 16000000);              // pclk active negative, preferred speed
+
+Arduino_GFX *gfx = new Arduino_RGB_Display(
+    LCD_HOR_RES,
+    LCD_VER_RES,
+    rgbpanel,
+    0 /* rotation */,
+    true /* auto flush */);
+
+TouchDrvGT911 touch;
 
 // LVGL display buffers
 uint32_t screenWidth;
@@ -299,32 +313,32 @@ void my_touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
     data->state = LV_INDEV_STATE_PR;
     
     // Manual coordinate transformation for custom rotation system
-    // Physical coordinates from touch controller (always 320x480 orientation)
+    // Physical coordinates from touch controller (always 800x480 orientation)
     int16_t physical_x = x[0];
     int16_t physical_y = y[0];
     int16_t screen_x, screen_y;
     
     // Transform coordinates to match the current screen orientation
     switch (currentRotation) {
-      case 0: // Portrait (0°) - direct mapping
+      case 0: // Portrait (0°) - direct mapping (800x480)
         screen_x = physical_x;
         screen_y = physical_y;
         break;
         
-      case 90: // Landscape (90° clockwise)
-        // Physical (320x480) -> Screen (480x320)
+      case 90: // Landscape (90° clockwise) - Screen becomes 480x800
+        // Physical (800x480) -> Screen (480x800)
         screen_x = physical_y;
         screen_y = LCD_HOR_RES - 1 - physical_x;
         break;
         
-      case 180: // Portrait inverted (180°)
-        // Physical (320x480) -> Screen (320x480) but flipped
+      case 180: // Portrait inverted (180°) - Screen stays 800x480 but flipped
+        // Physical (800x480) -> Screen (800x480) but flipped
         screen_x = LCD_HOR_RES - 1 - physical_x;
         screen_y = LCD_VER_RES - 1 - physical_y;
         break;
         
-      case 270: // Landscape (270° clockwise)
-        // Physical (320x480) -> Screen (480x320)
+      case 270: // Landscape (270° clockwise) - Screen becomes 480x800
+        // Physical (800x480) -> Screen (480x800)
         screen_x = LCD_VER_RES - 1 - physical_y;
         screen_y = physical_x;
         break;
@@ -345,14 +359,7 @@ void my_touchpad_read(lv_indev_drv_t *indev_drv, lv_indev_data_t *data) {
   }
 }
 
-void lcd_reset(void) {
-  TCA.write1(1, 1);
-  delay(10);
-  TCA.write1(1, 0);
-  delay(10);
-  TCA.write1(1, 1);
-  delay(200);
-}
+// LCD reset not needed for 4.3" display - handled by RGB panel
 
 void setup() {
   Serial.begin(115200);
@@ -362,44 +369,68 @@ void setup() {
   senseA_selected = true;
   settingsLoaded = true;
 
-  // Initialize I2C and TCA9554
-  Wire.begin(I2C_SDA, I2C_SCL);
-  TCA.begin();
-  TCA.pinMode1(1, OUTPUT);
-  lcd_reset();
-
-  // Initialize touch
-  if (!touch.begin(Wire, FT6X36_SLAVE_ADDRESS)) {
-    Serial.println("Failed to find FT6X36 - check your wiring!");
-    while (1) delay(1000);
-  }
-
-  // Initialize display
-  if (!gfx->begin()) {
-    Serial.println("gfx->begin() failed!");
-  }
-  gfx->fillScreen(RGB565_BLACK);
-
-#ifdef GFX_BL
+  // Initialize backlight
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
-#endif
+
+  // Initialize display (RGB parallel interface)
+  if (!gfx->begin()) {
+    Serial.println("gfx->begin() failed!");
+    while (1) delay(1000);
+  }
+  gfx->fillScreen(BLACK);
+
+  // Initialize I2C for touch controller
+  Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+  touch.setPins(TOUCH_RST, TOUCH_IRQ);
+  touch.setMaxCoordinates(LCD_HOR_RES, LCD_VER_RES);
+  touch.setMirrorXY(false, true); // Mirror Y to match display origin
+
+  // Initialize touch (GT911)
+  if (!touch.begin(Wire, GT911_SLAVE_ADDRESS_L, TOUCH_SDA, TOUCH_SCL)) {
+    Serial.println("Failed to find GT911 - touch disabled!");
+    // Continue without touch - don't block
+  } else {
+    touch.wakeup();
+    Serial.println("GT911 touch initialized");
+  }
 
   // Initialize LVGL
   lv_init();
   
-  // Display is 320x480 - use these dimensions for LVGL
-  screenWidth = LCD_HOR_RES;  // 320
+  // Display is 800x480 - use these dimensions for LVGL
+  screenWidth = LCD_HOR_RES;  // 800
   screenHeight = LCD_VER_RES; // 480
   
-  bufSize = screenWidth * 120;
+  // Larger buffer for 4.3" display - use 40 lines (from demo)
+  bufSize = screenWidth * 40;
 
-  disp_draw_buf1 = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
-  disp_draw_buf2 = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_DEFAULT | MALLOC_CAP_8BIT);
+  // Try PSRAM first for 4.3" display (larger buffers needed)
+  disp_draw_buf1 = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  disp_draw_buf2 = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  
+  // Fallback to internal RAM if PSRAM allocation fails
+  if (!disp_draw_buf1 || !disp_draw_buf2) {
+    if (disp_draw_buf1) {
+      heap_caps_free(disp_draw_buf1);
+      disp_draw_buf1 = nullptr;
+    }
+    if (disp_draw_buf2) {
+      heap_caps_free(disp_draw_buf2);
+      disp_draw_buf2 = nullptr;
+    }
+    disp_draw_buf1 = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    disp_draw_buf2 = (lv_color_t *)heap_caps_malloc(bufSize * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  }
+  
+  if (!disp_draw_buf1 || !disp_draw_buf2) {
+    Serial.println("LVGL buffer allocation failed!");
+    while (1) delay(1000);
+  }
   lv_disp_draw_buf_init(&draw_buf, disp_draw_buf1, disp_draw_buf2, bufSize);
 
   lv_disp_drv_init(&disp_drv);
-  disp_drv.hor_res = screenWidth;  // 320
+  disp_drv.hor_res = screenWidth;  // 800
   disp_drv.ver_res = screenHeight; // 480
   disp_drv.flush_cb = my_disp_flush;
   disp_drv.draw_buf = &draw_buf;
@@ -790,23 +821,23 @@ static void apply_rotation_settings() {
   switch (currentRotation) {
     case 0:
       gfx->setRotation(0);
-      disp_drv.hor_res = LCD_HOR_RES;  // 320
+      disp_drv.hor_res = LCD_HOR_RES;  // 800
       disp_drv.ver_res = LCD_VER_RES;  // 480
       break;
     case 90:
       gfx->setRotation(1);
       disp_drv.hor_res = LCD_VER_RES;  // 480
-      disp_drv.ver_res = LCD_HOR_RES;  // 320
+      disp_drv.ver_res = LCD_HOR_RES;  // 800
       break;
     case 180:
       gfx->setRotation(2);
-      disp_drv.hor_res = LCD_HOR_RES;  // 320
+      disp_drv.hor_res = LCD_HOR_RES;  // 800
       disp_drv.ver_res = LCD_VER_RES;  // 480
       break;
     case 270:
       gfx->setRotation(3);
       disp_drv.hor_res = LCD_VER_RES;  // 480
-      disp_drv.ver_res = LCD_HOR_RES;  // 320
+      disp_drv.ver_res = LCD_HOR_RES;  // 800
       break;
   }
 

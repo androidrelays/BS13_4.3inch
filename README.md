@@ -1,23 +1,36 @@
-# BS14 ESP32-S3 LCD Project
+# BS14 ESP32-S3 LCD Project - 4.3" Display
 
-This is an optimized PlatformIO project for ESP32-S3 with 3.5" LCD display that features custom rotation system and touch mapping.
+This is an optimized PlatformIO project for ESP32-S3 with 4.3" LCD display that features custom rotation system and touch mapping.
 
-## Key Changes from Arduino Giga Version
+## Key Features
 
-1. **BLE Library**: Converted from ArduinoBLE to ESP32 BLE (BLEDevice, BLEServer, BLECharacteristic)
-2. **Display**: Uses Arduino_GFX with ST7796 driver instead of Arduino_H7_Video
-3. **Touch**: Uses TouchDrvFT6X36 instead of Arduino_GigaDisplayTouch
-4. **Display Resolution**: 320x480 (3.5" LCD) instead of Arduino Giga's display
+1. **BLE Library**: ESP32 BLE (BLEDevice, BLEServer, BLECharacteristic)
+2. **Display**: Uses Arduino_GFX with RGB Parallel Interface (Arduino_RGB_Display)
+3. **Touch**: Uses TouchDrvGT911 for 4.3" display
+4. **Display Resolution**: 800x480 (4.3" LCD)
 
 ## Pin Configuration
 
-**IMPORTANT**: You need to adjust the following pin definitions in `src/main.cpp` to match your ESP32-S3 board:
+**IMPORTANT**: The following pin definitions are configured for the ESP32-S3 4.3" Touch LCD display:
+
+### Display Pins (RGB Parallel Interface)
+- **RGB Panel**: 
+  - DE=40, VSYNC=41, HSYNC=39, PCLK=42
+  - R0~R4: 45, 48, 47, 21, 14
+  - G0~G5: 5, 6, 7, 15, 16, 4
+  - B0~B4: 8, 3, 46, 9, 1
+- **Backlight**: GPIO 2
+
+### Touch Panel (GT911)
+- **SDA**: GPIO 8
+- **SCL**: GPIO 9
+- **IRQ**: GPIO 4
 
 ### LED Pins (active-low RGB)
 ```cpp
-const int redled = 4;   // Change to your RGB LED pins
-const int greenled = 5; // Change to your RGB LED pins
-const int blueled = 6;  // Change to your RGB LED pins
+const int redled = 19;   // Avoids RGB panel conflicts
+const int greenled = 20; // Avoids RGB panel conflicts
+const int blueled = 18;  // OK - not used by RGB panel
 ```
 
 ### Breaker Control Pins
@@ -30,25 +43,13 @@ const int openInput = 14;
 const int closeInput = 15;
 ```
 
-### Display Pins (already configured for 3.5" LCD)
-```cpp
-#define GFX_BL 6        // Backlight
-#define SPI_MISO 2
-#define SPI_MOSI 1
-#define SPI_SCLK 5
-#define LCD_DC 3
-#define I2C_SDA 8
-#define I2C_SCL 7
-```
-
 ## Building and Uploading
 
 1. Install PlatformIO
 2. Open this project in PlatformIO
-3. Adjust pin definitions in `src/main.cpp` to match your hardware
-4. Build: `pio run`
-5. Upload: `pio run --target upload`
-6. Monitor: `pio device monitor`
+3. Build: `pio run -e esp32-s3-devkitm-1`
+4. Upload: `pio run -e esp32-s3-devkitm-1 --target upload`
+5. Monitor: `pio device monitor -e esp32-s3-devkitm-1`
 
 ## BLE Compatibility
 
@@ -61,7 +62,14 @@ The BLE implementation uses ESP32 BLE APIs which are compatible with the Flutter
 
 ## Notes
 
-- LVGL version: 9.3.0
-- The display uses a 320x480 resolution (portrait mode by default, rotated 270 degrees)
+- LVGL version: 8.4.0
+- Display resolution: 800x480 (4.3" LCD)
+- Uses RGB parallel interface instead of SPI
+- PSRAM enabled for larger display buffers
 - All UI functionality from the original Arduino Giga sketch is preserved
 
+## Hardware Requirements
+
+- ESP32-S3 development board with PSRAM
+- ESP32-S3 Touch LCD 4.3" display module
+- Compatible with Waveshare-style 4.3" displays
